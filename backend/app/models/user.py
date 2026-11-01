@@ -1,8 +1,10 @@
 
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
+
 
 
 class User(Base):
@@ -24,4 +26,10 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(
         String(100),
         nullable=False
+    )
+
+    projects = relationship(
+    "Project",
+    back_populates="owner",
+    cascade="all, delete-orphan"
     )

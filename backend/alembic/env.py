@@ -3,7 +3,17 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from app.db.session import Base
-from app.models.user import *
+from app.models import (
+    User,
+    Project,
+    Dataset,
+    DatasetRecord,
+    ModelConfig,
+    Prompt,
+    Experiment,
+    EvaluationResult,
+    Trace,
+)
 from app.core.config import getAppConfig
 
 from alembic import context
@@ -42,7 +52,7 @@ def run_migrations_offline() -> None:
 
     """
     app_config = getAppConfig()
-    url = config.get_main_option("sqlalchemy.url" , default= app_config)
+    url = app_config.get_main_option("sqlalchemy.url" , default= app_config)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -77,7 +87,7 @@ def run_migrations_online() -> None:
         )
 
         with context.begin_transaction():
-            context.run_migrations
+            context.run_migrations()
 if context.is_offline_mode():
     run_migrations_offline()
 else:
