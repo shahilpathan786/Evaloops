@@ -43,3 +43,20 @@ def create_access_token(
     )
 
     return encoded_jwt
+
+
+def verify_access_token(token: str) -> dict | None:
+    config = getAppConfig()
+
+    try:
+        payload = jwt.decode(
+            token,
+            config.secret_key,
+            algorithms=[config.algorithm]
+        )
+
+        return payload
+
+    except jwt.InvalidTokenError:
+        return None
+

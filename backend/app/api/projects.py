@@ -1,24 +1,16 @@
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status
-)
 
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.api.deps import get_db, get_current_user
 from app.models import Project, User
-
 from app.schemas.project import ProjectCreate, ProjectRead
 
 
-router = APIRouter(
-    prefix="/projects",
-    tags=["Projects"]
-)
+router = APIRouter(prefix="/projects", tags=["Projects"])
+
 
 @router.post(
     "",
@@ -27,21 +19,13 @@ router = APIRouter(
 )
 def create_project(
     payload: ProjectCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
 
-    # 1. Check whether the user exists
-    user = db.get(User, payload.user_id)
-
-    if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
-
-    # 2. Check for duplicate project names
+    # Check duplicate project for this user
     statement = select(Project.id).where(
-        Project.user_id == payload.user_id,
+        Project.user_id == current_user.id,
         Project.name == payload.name
     )
 
@@ -53,25 +37,23 @@ def create_project(
             detail="Project already exists"
         )
 
-    # 3. Create project object
-    project = Project(**payload.model_dump())
+    # Automatically assign authenticated user
+    project = Project(
+        **payload.model_dump(),
+        user_id=current_user.id
+    )
 
-    # 4. Add to session
     db.add(project)
 
-    # 5. Commit transaction
     try:
         db.commit()
-
     except IntegrityError:
         db.rollback()
-
         raise HTTPException(
             status_code=409,
             detail="Project conflicts with an existing database constraint"
         ) from None
 
-    # 6. Refresh object
     db.refresh(project)
 
     return project

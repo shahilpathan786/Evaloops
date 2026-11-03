@@ -8,6 +8,9 @@ from app.api.deps import get_db
 from app.models import User
 from app.schemas.user import UserCreate, UserRead
 from app.core.security import hash_password
+from app.schemas.user import UserLogin, Token
+from app.core.security import verify_password, create_access_token
+from app.api.deps import get_current_user
 
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -61,3 +64,46 @@ def register_user(
     db.refresh(user)
 
     return user
+
+
+
+@router.post("/login", response_model=Token)
+def login_user(
+    payload: UserLogin,
+    db: Session = Depends(get_db)
+):
+    # 1. Find user by email
+    statement = select(User).where(
+        User.email == payload.email
+    )
+
+    user = db.scalar(statement)
+
+    # 2. Verify user and password
+    if user is None or not verify_password(
+        payload.password,
+        user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    # 3. Generate JWT access token
+    access_token = create_access_token(
+        data={"sub": str(user.id)}
+    )
+
+    # 4. Return token
+    return Token(
+        access_token=access_token,
+        token_type="bearer"
+    )
+
+@router.get("/me", response_model=UserRead)
+def get_me(
+    current_user: User = Depends(get_current_user)
+):
+    return current_user
+

@@ -1,28 +1,16 @@
-from datetime import datetime
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_validator
-)
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProjectCreate(BaseModel):
 
-    user_id: int = Field(gt=0)
-
-    name: str = Field(
-        min_length=1,
-        max_length=120
-    )
+    name: str = Field(min_length=1, max_length=120)
 
     description: str | None = None
 
     @field_validator("name")
     @classmethod
-    def validate_name(cls, value: str):
-
+    def validate_name(cls, value):
         value = value.strip()
 
         if not value:
@@ -33,20 +21,15 @@ class ProjectCreate(BaseModel):
 
 class ProjectUpdate(BaseModel):
 
-    name: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=120
-    )
+    name: str | None = Field(default=None, min_length=1, max_length=120)
 
     description: str | None = None
 
     @field_validator("name")
     @classmethod
     def validate_name(cls, value):
-
         if value is None:
-            raise ValueError("Project name cannot be null")
+            return value
 
         value = value.strip()
 
@@ -64,6 +47,5 @@ class ProjectRead(BaseModel):
     user_id: int
     name: str
     description: str | None
-
-    created_at: datetime
-    updated_at: datetime
+    created_at: object
+    updated_at: object
