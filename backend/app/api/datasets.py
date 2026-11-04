@@ -1,0 +1,198 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_db, get_current_user
+from app.models import Dataset, Project, User
+from app.schemas.dataset import DatasetCreate, DatasetRead
+from fastapi import Query
+from app.schemas.dataset import DatasetCreate, DatasetRead, DatasetUpdate
+
+
+router = APIRouter(
+    prefix="/datasets",
+    tags=["Datasets"]
+)
+
+
+@router.post(
+    "/",
+    response_model=DatasetRead,
+    status_code=status.HTTP_201_CREATED
+)
+def create_dataset(
+    payload: DatasetCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Verify that the project belongs to the logged-in user
+    project = db.scalar(
+        select(Project).where(
+            Project.id == payload.project_id,
+            Project.user_id == current_user.id
+        )
+    )
+
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+
+    # 2. Create dataset
+    dataset = Dataset(
+        project_id=project.id,
+        name=payload.name,
+        description=payload.description
+    )
+
+    db.add(dataset)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A dataset with this name already exists in this project"
+        )
+
+    db.refresh(dataset)
+
+    return dataset
+
+@router.get("/", response_model=list[DatasetRead])
+def get_datasets(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    statement = (
+        select(Dataset)
+        .join(Project, Dataset.project_id == Project.id)
+        .where(Project.user_id == current_user.id)
+        .order_by(Dataset.created_at.desc(), Dataset.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+
+    datasets = db.scalars(statement).all()
+
+    return datasets
+
+@router.get("/{dataset_id}", response_model=DatasetRead)
+def get_dataset(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    statement = (
+        select(Dataset)
+        .join(Project, Dataset.project_id == Project.id)
+        .where(
+            Dataset.id == dataset_id,
+            Project.user_id == current_user.id
+        )
+    )
+
+    dataset = db.scalar(statement)
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found"
+        )
+
+    return dataset
+
+
+@router.patch("/{dataset_id}", response_model=DatasetRead)
+def update_dataset(
+    dataset_id: int,
+    payload: DatasetUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    statement = (
+        select(Dataset)
+        .join(Project, Dataset.project_id == Project.id)
+        .where(
+            Dataset.id == dataset_id,
+            Project.user_id == current_user.id
+        )
+    )
+
+    dataset = db.scalar(statement)
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found"
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No fields provided for update"
+        )
+
+    if "name" in update_data and update_data["name"] is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Dataset name cannot be null"
+        )
+
+    for field, value in update_data.items():
+        setattr(dataset, field, value)
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A dataset with this name already exists in this project"
+        )
+
+    db.refresh(dataset)
+
+    return dataset
+
+
+
+@router.delete(
+    "/{dataset_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_dataset(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    statement = (
+        select(Dataset)
+        .join(Project, Dataset.project_id == Project.id)
+        .where(
+            Dataset.id == dataset_id,
+            Project.user_id == current_user.id
+        )
+    )
+
+    dataset = db.scalar(statement)
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found"
+        )
+
+    db.delete(dataset)
+    db.commit()
+
+    return None
+
+

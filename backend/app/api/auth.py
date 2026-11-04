@@ -27,7 +27,7 @@ def register_user(
 ):
     # 1. Check whether email already exists
     statement = select(User).where(
-        User.email == payload.email
+        User.email == payload.email 
     )
 
     existing_user = db.scalar(statement)
