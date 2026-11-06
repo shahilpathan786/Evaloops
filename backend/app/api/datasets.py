@@ -8,6 +8,17 @@ from app.models import Dataset, Project, User
 from app.schemas.dataset import DatasetCreate, DatasetRead
 from fastapi import Query
 from app.schemas.dataset import DatasetCreate, DatasetRead, DatasetUpdate
+from app.services.dataset_record import create_dataset_record
+from app.schemas.dataset_record import (
+    DatasetRecordCreate,
+    DatasetRecordResponse
+)
+
+from fastapi import Query
+
+from app.schemas.dataset_record import DatasetRecordListResponse
+from app.services.dataset_record import get_dataset_records
+from app.services.dataset_record import get_dataset_record
 
 
 router = APIRouter(
@@ -195,4 +206,57 @@ def delete_dataset(
 
     return None
 
+@router.post(
+    "/{dataset_id}/records",
+    response_model=DatasetRecordResponse,
+    status_code=status.HTTP_201_CREATED
+)
+def create_record(
+    dataset_id: int,
+    payload: DatasetRecordCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return create_dataset_record(
+        db=db,
+        dataset_id=dataset_id,
+        current_user=current_user,
+        payload=payload
+    )
 
+
+@router.get(
+    "/{dataset_id}/records",
+    response_model=DatasetRecordListResponse
+)
+def list_dataset_records(
+    dataset_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return get_dataset_records(
+        db=db,
+        dataset_id=dataset_id,
+        current_user=current_user,
+        page=page,
+        limit=limit
+    )
+
+@router.get(
+    "/{dataset_id}/records/{record_id}",
+    response_model=DatasetRecordResponse
+)
+def retrieve_dataset_record(
+    dataset_id: int,
+    record_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return get_dataset_record(
+        db=db,
+        dataset_id=dataset_id,
+        record_id=record_id,
+        current_user=current_user
+    )
