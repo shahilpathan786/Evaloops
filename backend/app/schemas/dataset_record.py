@@ -1,5 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 
 class DatasetRecordCreate(BaseModel):
@@ -26,5 +27,23 @@ class DatasetRecordListResponse(BaseModel):
     page: int
     limit: int
     total_pages: int
+
+class DatasetRecordUpdate(BaseModel):
+    input: str = None
+    expected_output: str | None = None
+    context: str | None = None
+
+
+
+class DatasetRecordBulkCreate(BaseModel):
+    records: list[DatasetRecordCreate] = Field(
+        ...,
+        min_length=1,
+        max_length=500
+    )
+
+class DatasetRecordBulkResponse(BaseModel):
+    created_count: int
+    items: list[DatasetRecordResponse]
 
 
