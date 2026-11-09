@@ -18,3 +18,6 @@ class AppConfig(BaseSettings):
 @lru_cache
 def getAppConfig():
     return AppConfig()
+
+
+

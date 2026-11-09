@@ -305,7 +305,10 @@ def bulk_create_dataset_records(
         db.rollback()
         raise
 
+
+     # if some problem comes i need to remove this refresh work .
     # 4. Refresh generated database fields
+    
     for record in records:
         db.refresh(record)
 

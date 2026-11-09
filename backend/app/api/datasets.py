@@ -29,6 +29,28 @@ from app.schemas.dataset_record import DatasetRecordBulkResponse
 
 from app.services.dataset_record import bulk_create_dataset_records
 
+from fastapi import UploadFile, File
+
+from app.utils.dataset_parser import parse_dataset_file
+
+from app.services.dataset_ingestion_service import (
+    ingest_dataset_records
+)
+
+from app.core.upload_config import MAX_UPLOAD_SIZE
+from app.core.upload_config import MAX_DATASET_RECORDS
+
+from pathlib import Path
+from fastapi import HTTPException
+from app.core.upload_config import (
+    ALLOWED_EXTENSIONS,
+    ALLOWED_CONTENT_TYPES,
+)
+
+from app.core.file_validator import validate_file_content
+
+
+
 
 router = APIRouter(
     prefix="/datasets",
@@ -328,3 +350,101 @@ def bulk_create_records(
         current_user=current_user,
         payload=payload
     )
+
+
+
+@router.post(
+    "/{dataset_id}/upload",
+    response_model=DatasetRecordBulkResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def upload_dataset_file(
+    dataset_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Validate filename
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required"
+        )
+
+    # Read at most 5 MB + 1 byte
+    content = await file.read(MAX_UPLOAD_SIZE + 1)
+
+    # Check file size
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds the maximum allowed limit of 5 MB"
+        )
+    
+
+    # Check empty file
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty"
+        )
+
+    file_extension = Path(file.filename).suffix.lower()
+
+    if file_extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail="Unsupported file extension. Only CSV and JSON are allowed."
+        )
+
+    content_type = file.content_type
+
+    if content_type not in ALLOWED_CONTENT_TYPES[file_extension]:
+        raise HTTPException(
+            status_code=415,
+            detail="Invalid content type for the uploaded file."
+        )
+
+    # 3. Parse CSV or JSON
+
+    # Validate actual file content
+
+    decoded_content = validate_file_content(content)
+
+    try:
+        records = parse_dataset_file(
+            filename=file.filename,
+            content=decoded_content.encode("utf-8")
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc)
+        )
+
+    # 4. Validate maximum record limit
+
+    if len(records) > MAX_DATASET_RECORDS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Dataset cannot contain more than {MAX_DATASET_RECORDS} records."
+    )
+
+    # 5. Validate records and insert into database
+    try:
+        result = ingest_dataset_records(
+            db=db,
+            dataset_id=dataset_id,
+            current_user=current_user,
+            records=records
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=exc.args[0]
+        )
+
+    # 5. Return insertion result
+    return result

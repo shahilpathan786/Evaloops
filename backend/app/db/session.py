@@ -12,7 +12,7 @@ Base = declarative_base()
 config = getAppConfig()
 engine = create_engine(config.database_url)
 
-sessionLocal = sessionmaker(autoflush=False , autocommit = False , bind=engine)
+sessionLocal = sessionmaker(autoflush=False , autocommit = False , bind=engine, expire_on_commit=False)
 
 def get_db() -> Generator[Session , None , None]:
     db = sessionLocal()
