@@ -107,3 +107,61 @@ def create_experiment(
         raise
 
     return experiment
+
+
+
+def list_experiments(
+    db: Session,
+    project_id: int,
+    current_user: User
+):
+    # 1. Verify project ownership
+    project = db.execute(
+        select(Project).where(
+            Project.id == project_id,
+            Project.user_id == current_user.id
+        )
+    ).scalar_one_or_none()
+
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found"
+        )
+
+    # 2. Fetch experiments
+    stmt = (
+        select(Experiment)
+        .where(Experiment.project_id == project_id)
+        .order_by(Experiment.created_at.desc())
+    )
+
+    experiments = db.execute(stmt).scalars().all()
+
+    return experiments
+
+
+
+def get_experiment(
+    db: Session,
+    experiment_id: int,
+    current_user: User
+):
+    experiment = db.execute(
+        select(Experiment)
+        .join(Project, Experiment.project_id == Project.id)
+        .where(
+            Experiment.id == experiment_id,
+            Project.user_id == current_user.id
+        )
+    ).scalar_one_or_none()
+
+    if not experiment:
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment not found"
+        )
+
+    return experiment
+
+
