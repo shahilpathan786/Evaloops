@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from app.api.projects import router as projects_router
 from app.api.auth import router as auth_router
 from app.api.datasets import router as datasets_router
+from app.api.model_config import router as model_config
+from app.api.experiment import router as experiment
+
 
 
 
@@ -20,6 +23,8 @@ app.include_router(
 app.include_router(auth_router, prefix="/api/v1")
 
 app.include_router(datasets_router , prefix="/api/v1")
+app.include_router(model_config , prefix="/api/v1")
+app.include_router(experiment , prefix="/api/v1")
 
 
 @app.get("/")
