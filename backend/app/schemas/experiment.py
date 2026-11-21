@@ -42,3 +42,9 @@ class ExperimentResponse(BaseModel):
 
 class ExperimentStatusUpdate(BaseModel):
     status: ExperimentStatus
+
+class ExperimentUpdate(BaseModel):
+    dataset_id: int | None = Field(default=None, gt=0)
+    model_config_id: int | None = Field(default=None, gt=0)
+    prompt_id: int | None = Field(default=None, gt=0)
+

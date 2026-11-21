@@ -11,7 +11,7 @@ from app.models.prompt import Prompt
 from app.models.experiment import Experiment
 from app.models.user import User
 
-from app.schemas.experiment import ExperimentCreate
+from app.schemas.experiment import ExperimentCreate , ExperimentUpdate
 
 
 def create_experiment(
@@ -163,5 +163,174 @@ def get_experiment(
         )
 
     return experiment
+
+
+
+def update_experiment(
+    db: Session,
+    experiment_id: int,
+    current_user: User,
+    payload: ExperimentUpdate
+):
+    # 1. Fetch experiment and verify ownership
+    experiment = db.execute(
+        select(Experiment)
+        .join(Project, Experiment.project_id == Project.id)
+        .where(
+            Experiment.id == experiment_id,
+            Project.user_id == current_user.id
+        )
+    ).scalar_one_or_none()
+
+    if not experiment:
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment not found"
+        )
+
+    # 2. Only queued experiments can be updated
+    if experiment.status != "queued":
+        raise HTTPException(
+            status_code=400,
+            detail="Only queued experiments can be updated"
+        )
+
+    # 3. Extract only fields provided by the user
+    updates = payload.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(
+            status_code=400,
+            detail="No fields provided for update"
+        )
+
+    project_id = experiment.project_id
+
+    # 4. Update dataset if provided
+    if "dataset_id" in updates:
+        if updates["dataset_id"] is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Dataset ID cannot be null"
+            )
+
+        dataset = db.execute(
+            select(Dataset).where(
+                Dataset.id == updates["dataset_id"],
+                Dataset.project_id == project_id
+            )
+        ).scalar_one_or_none()
+
+        if not dataset:
+            raise HTTPException(
+                status_code=404,
+                detail="Dataset not found in this project"
+            )
+
+        experiment.dataset_id = dataset.id
+
+        # Recalculate record count
+        experiment.total_records = db.scalar(
+            select(func.count(DatasetRecord.id)).where(
+                DatasetRecord.dataset_id == dataset.id
+            )
+        )
+
+    # 5. Update model configuration if provided
+    if "model_config_id" in updates:
+        if updates["model_config_id"] is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Model configuration ID cannot be null"
+            )
+
+        model_config = db.execute(
+            select(ModelConfig).where(
+                ModelConfig.id == updates["model_config_id"],
+                ModelConfig.project_id == project_id
+            )
+        ).scalar_one_or_none()
+
+        if not model_config:
+            raise HTTPException(
+                status_code=404,
+                detail="Model configuration not found in this project"
+            )
+
+        experiment.model_config_id = model_config.id
+
+    # 6. Update optional prompt if provided
+    if "prompt_id" in updates:
+        if updates["prompt_id"] is None:
+            experiment.prompt_id = None
+
+        else:
+            prompt = db.execute(
+                select(Prompt).where(
+                    Prompt.id == updates["prompt_id"],
+                    Prompt.project_id == project_id
+                )
+            ).scalar_one_or_none()
+
+            if not prompt:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Prompt not found in this project"
+                )
+
+            experiment.prompt_id = prompt.id
+
+    # 7. Save changes
+    try:
+        db.commit()
+        db.refresh(experiment)
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return experiment
+
+
+
+def delete_experiment(
+    db: Session,
+    experiment_id: int,
+    current_user: User
+):
+    # 1. Fetch experiment and verify ownership
+    experiment = db.execute(
+        select(Experiment)
+        .join(Project, Experiment.project_id == Project.id)
+        .where(
+            Experiment.id == experiment_id,
+            Project.user_id == current_user.id
+        )
+    ).scalar_one_or_none()
+
+    if not experiment:
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment not found"
+        )
+
+    # 2. Check experiment status
+    if experiment.status not in ["queued", "failed"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Only queued or failed experiments can be deleted"
+        )
+
+    # 3. Delete experiment
+    try:
+        db.delete(experiment)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+        raise
+
+
+
 
 

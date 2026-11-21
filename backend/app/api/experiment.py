@@ -7,7 +7,8 @@ from app.models.user import User
 
 from app.schemas.experiment import (
     ExperimentCreate,
-    ExperimentResponse
+    ExperimentResponse,
+    ExperimentUpdate,
 )
 
 from app.services.experiment import create_experiment
@@ -16,7 +17,9 @@ from app.api.deps import get_db, get_current_user
 from app.services.experiment import (
     create_experiment,
     list_experiments,
-    get_experiment
+    get_experiment,
+    update_experiment,
+    delete_experiment
 )
 
 
@@ -73,4 +76,40 @@ def get_experiment_endpoint(
         experiment_id=experiment_id,
         current_user=current_user
     )
+
+
+
+@router.patch(
+    "/experiments/{experiment_id}",
+    response_model=ExperimentResponse
+)
+def update_experiment_endpoint(
+    experiment_id: int,
+    payload: ExperimentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return update_experiment(
+        db=db,
+        experiment_id=experiment_id,
+        current_user=current_user,
+        payload=payload
+    )
+
+
+@router.delete(
+    "/experiments/{experiment_id}",
+    status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_experiment_endpoint(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    delete_experiment(
+        db=db,
+        experiment_id=experiment_id,
+        current_user=current_user
+    )
+
 
