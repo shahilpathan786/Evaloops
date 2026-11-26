@@ -11,6 +11,7 @@ class AppConfig(BaseSettings):
     algorithm: str
     access_token_expire_minutes: int
     REDIS_URL: str
+    groq_api_key: str
 
     model_config = SettingsConfigDict(env_file=".env")
 

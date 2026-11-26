@@ -5,6 +5,7 @@ from app.api.datasets import router as datasets_router
 from app.api.model_config import router as model_config
 from app.api.experiment import router as experiment
 from app.api.prompt import router as prompts_router
+from app.api.evaluation_result import router as evaluation_results_router
 
 
 
@@ -26,6 +27,7 @@ app.include_router(datasets_router , prefix="/api/v1")
 app.include_router(model_config , prefix="/api/v1")
 app.include_router(experiment , prefix="/api/v1")
 app.include_router(prompts_router , prefix="/api/v1" )
+app.include_router(evaluation_results_router, prefix="/api/v1")
 
 
 @app.get("/")
