@@ -62,3 +62,42 @@ def persist_execution_result(
         "evaluation_result": evaluation_result,
         "trace": trace,
     }
+
+
+def persist_execution_error(
+    db: Session,
+    experiment: Experiment,
+    record: DatasetRecord,
+    error: Exception,
+):
+    # Verify dataset ownership
+    if record.dataset_id != experiment.dataset_id:
+        raise ValueError(
+            "Dataset record does not belong to this experiment"
+        )
+
+    # Create error trace
+    trace = Trace(
+        project_id=experiment.project_id,
+        model_config_id=experiment.model_config_id,
+        input=record.input,
+        output=None,
+        latency_ms=None,
+        prompt_tokens=0,
+        completion_tokens=0,
+        total_tokens=0,
+        status="error",
+        error_message=str(error),
+    )
+
+    try:
+        db.add(trace)
+        db.commit()
+        db.refresh(trace)
+
+    except Exception:
+        db.rollback()
+        raise
+
+    return trace
+

@@ -6,9 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.models.experiment import Experiment
 from app.models.dataset_record import DatasetRecord
+from app.models.evaluation_result import EvaluationResult
 
 from app.services.record_execution import execute_record
-from app.services.execution_persistence import persist_execution_result
+from app.services.execution_persistence import (
+    persist_execution_result,
+    persist_execution_error,
+)
 
 
 def run_experiment(
@@ -16,10 +20,10 @@ def run_experiment(
     experiment: Experiment,
 ) -> Experiment:
 
-    # 1. Only queued experiments can start
-    if experiment.status != "queued":
+    # 1. Allow queued and failed experiments to execute
+    if experiment.status not in ("queued", "failed"):
         raise ValueError(
-            "Only queued experiments can be executed"
+            "Only queued or failed experiments can be executed"
         )
 
     # 2. Fetch dataset records
@@ -31,7 +35,17 @@ def run_experiment(
         .order_by(DatasetRecord.id)
     ).scalars().all()
 
-    # 3. Get model and prompt configuration
+    # 3. Identify records that have already succeeded
+    successful_record_ids = set(
+        db.execute(
+            select(EvaluationResult.dataset_record_id)
+            .where(
+                EvaluationResult.experiment_id == experiment.id
+            )
+        ).scalars().all()
+    )
+
+    # 4. Get model and prompt configuration
     model_config = experiment.model_config
     prompt = experiment.prompt
 
@@ -48,7 +62,7 @@ def run_experiment(
         "max_tokens", 1024
     )
 
-    # 4. Mark experiment as running
+    # 5. Mark experiment as running
     experiment.status = "running"
     experiment.started_at = datetime.now(timezone.utc)
     experiment.completed_at = None
@@ -58,18 +72,46 @@ def run_experiment(
     db.refresh(experiment)
 
     try:
-        # 5. Execute every dataset record
+        failed_records = []
+        skipped_records = 0
+
+        # 6. Execute dataset records independently
         for record in records:
 
-            execution_result = execute_record(
-                model_name=model_config.model_name,
-                record=record,
-                prompt=prompt,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            # Skip records that already succeeded
+            if record.id in successful_record_ids:
+                print(
+                    f"Skipping record {record.id}: "
+                    "already successfully processed"
+                )
+                skipped_records += 1
+                continue
 
-            # 6. Persist evaluation result and trace
+            try:
+                execution_result = execute_record(
+                    model_name=model_config.model_name,
+                    record=record,
+                    prompt=prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+
+            except Exception as exc:
+                # Save failed execution trace
+                persist_execution_error(
+                    db=db,
+                    experiment=experiment,
+                    record=record,
+                    error=exc,
+                )
+
+                failed_records.append(
+                    f"Record {record.id}: {str(exc)}"
+                )
+
+                continue
+
+            # Save successful execution result and trace
             persist_execution_result(
                 db=db,
                 experiment=experiment,
@@ -77,18 +119,30 @@ def run_experiment(
                 execution_result=execution_result,
             )
 
-        # 7. Mark experiment as completed
-        experiment.status = "completed"
+        # 7. Determine final experiment status
+        if failed_records:
+            experiment.status = "failed"
+            experiment.error_message = (
+                f"{len(failed_records)} record(s) failed. "
+                + "; ".join(failed_records)
+            )
+        else:
+            experiment.status = "completed"
+            experiment.error_message = None
+
         experiment.completed_at = datetime.now(timezone.utc)
 
         db.commit()
         db.refresh(experiment)
 
+        print(f"Skipped records: {skipped_records}")
+        print(f"Failed records: {len(failed_records)}")
+
         return experiment
 
     except Exception as exc:
 
-        # 8. Mark experiment as failed
+        # Handle unexpected system or persistence errors
         db.rollback()
 
         experiment = db.get(Experiment, experiment.id)
