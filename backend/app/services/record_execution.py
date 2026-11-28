@@ -17,7 +17,10 @@ def execute_record(
     messages = build_messages(prompt, record)
 
     # Step 2: Generate completion using Groq
+
     result = generate_completion(
+
+
         model_name=model_name,
         messages=messages,
         temperature=temperature,
